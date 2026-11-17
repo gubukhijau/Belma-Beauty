@@ -160,3 +160,69 @@ export interface DashboardOverview {
   recentProducts: Product[];
   recentInquiries: Inquiry[];
 }
+
+export interface CustomerAccount {
+  id: number;
+  name: string;
+  address: string;
+  whatsappNumber: string;
+  email: string;
+  role: string;
+  lastLoginAt?: string | null;
+  createdAt: string;
+}
+
+export interface CustomerOrder {
+  id: number;
+  orderNumber: string;
+  customerId: number | null;
+  customerName: string;
+  customerWhatsapp: string;
+  customerEmail: string | null;
+  shippingAddress: string;
+  productSummary: string;
+  totalAmount: number;
+  orderChannel: string;
+  status: string;
+  courier: string | null;
+  trackingNumber: string | null;
+  trackingNote: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CekResiManifestItem {
+  time: string;
+  position: string;
+  status: string;
+}
+
+export interface CekResiResponse {
+  result?: {
+    awb_no?: string;
+    service?: string;
+    date_of_shipment?: string;
+    origin?: string;
+    destination?: string;
+    shipper?: string;
+    consignee?: string;
+    shipment_status?: {
+      outbond?: CekResiManifestItem[];
+      pod_detail?: CekResiManifestItem[];
+    };
+  };
+  summary?: {
+    last_time?: string;
+    last_position?: string;
+    last_status?: string;
+    status?: string;
+    resi_status?: number;
+  };
+  info?: {
+    http_status?: number;
+    error_txt?: string;
+    search_code?: string;
+  };
+  needsApiKey?: boolean;
+  error?: string;
+}

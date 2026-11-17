@@ -128,6 +128,15 @@ export function StoreFooter({ settings, onNavigate }: StoreFooterProps) {
                   Portal Reseller
                 </button>
               </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => onNavigate('/pelanggan')}
+                  className="hover:text-white transition-colors"
+                >
+                  Dashboard Pelanggan
+                </button>
+              </li>
             </ul>
           </div>
 

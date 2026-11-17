@@ -30,6 +30,7 @@ export function StoreHeader({
     { label: 'About Us', action: () => onNavigate('/about') },
     { label: 'Contact', action: () => onNavigate('/contact') },
     { label: 'Reseller', action: () => onNavigate('/reseller') },
+    { label: 'Pelanggan', action: () => onNavigate('/pelanggan') },
   ];
 
   const handleLinkClick = (fn: () => void) => {

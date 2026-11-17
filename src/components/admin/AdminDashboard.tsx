@@ -20,6 +20,7 @@ import {
   Loader2,
   AlertTriangle,
   Store,
+  Truck,
 } from 'lucide-react';
 import { signInWithPopup, signOut } from 'firebase/auth';
 import { auth, googleAuthProvider } from '../../lib/firebase';
@@ -28,6 +29,8 @@ import type {
   Banner,
   Category,
   CmsPage,
+  CustomerAccount,
+  CustomerOrder,
   DashboardOverview,
   Inquiry,
   Product,
@@ -42,6 +45,7 @@ import { AdminProductModal } from './AdminProductModal';
 import {
   BannersManager,
   CategoriesManager,
+  CustomerOrdersManager,
   InquiriesManager,
   PagesManager,
   ResellersManager,
@@ -53,6 +57,7 @@ type AdminTab =
   | 'dashboard'
   | 'products'
   | 'categories'
+  | 'customer-orders'
   | 'resellers'
   | 'inquiries'
   | 'banners'
@@ -92,6 +97,8 @@ export function AdminDashboard({ onExitToStore, onStorefrontUpdated }: AdminDash
   const [settings, setSettings] = useState<StoreSettings | null>(null);
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
   const [resellersList, setResellersList] = useState<ResellerAccount[]>([]);
+  const [customersList, setCustomersList] = useState<CustomerAccount[]>([]);
+  const [customerOrdersList, setCustomerOrdersList] = useState<CustomerOrder[]>([]);
 
   // Products filter & modal
   const [prodSearch, setProdSearch] = useState('');
@@ -114,26 +121,40 @@ export function AdminDashboard({ onExitToStore, onStorefrontUpdated }: AdminDash
       setLoadingData(true);
       try {
         const headers = fetchHeaders(tokenOverride);
-        const [ovRes, prodRes, catRes, banRes, testRes, pageRes, inqRes, setRes, usrRes, resRes] =
-          await Promise.all([
-            fetch('/api/admin/overview', { headers }),
-            fetch('/api/admin/products', { headers }),
-            fetch('/api/admin/categories', { headers }),
-            fetch('/api/admin/banners', { headers }),
-            fetch('/api/admin/testimonials', { headers }),
-            fetch('/api/admin/pages', { headers }),
-            fetch('/api/admin/inquiries', { headers }),
-            fetch('/api/admin/settings', { headers }),
-            fetch('/api/admin/users', { headers }),
-            fetch('/api/admin/resellers', { headers }),
-          ]);
+        const [
+          ovRes,
+          prodRes,
+          catRes,
+          banRes,
+          testRes,
+          pageRes,
+          inqRes,
+          setRes,
+          usrRes,
+          resRes,
+          custRes,
+          ordRes,
+        ] = await Promise.all([
+          fetch('/api/admin/overview', { headers }),
+          fetch('/api/admin/products', { headers }),
+          fetch('/api/admin/categories', { headers }),
+          fetch('/api/admin/banners', { headers }),
+          fetch('/api/admin/testimonials', { headers }),
+          fetch('/api/admin/pages', { headers }),
+          fetch('/api/admin/inquiries', { headers }),
+          fetch('/api/admin/settings', { headers }),
+          fetch('/api/admin/users', { headers }),
+          fetch('/api/admin/resellers', { headers }),
+          fetch('/api/admin/customers', { headers }),
+          fetch('/api/admin/orders', { headers }),
+        ]);
 
         if (ovRes.status === 401) {
           setAdminUser(null);
           return;
         }
 
-        const [ov, pr, ca, ba, te, pg, iq, st, us, rs] = await Promise.all([
+        const [ov, pr, ca, ba, te, pg, iq, st, us, rs, cu, ords] = await Promise.all([
           ovRes.json(),
           prodRes.json(),
           catRes.json(),
@@ -144,6 +165,8 @@ export function AdminDashboard({ onExitToStore, onStorefrontUpdated }: AdminDash
           setRes.json(),
           usrRes.json(),
           resRes.json(),
+          custRes.json(),
+          ordRes.json(),
         ]);
 
         setOverview(ov);
@@ -156,6 +179,8 @@ export function AdminDashboard({ onExitToStore, onStorefrontUpdated }: AdminDash
         setSettings(st.settings || null);
         setAdminUsers(us.users || []);
         setResellersList(rs.resellers || []);
+        setCustomersList(cu.customers || []);
+        setCustomerOrdersList(ords.orders || []);
       } catch (err) {
         console.error('Failed to load CMS data:', err);
         showToast('Gagal memuat data CMS.', 'error');
@@ -416,8 +441,9 @@ export function AdminDashboard({ onExitToStore, onStorefrontUpdated }: AdminDash
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'products', label: 'Products', icon: Package },
     { id: 'categories', label: 'Categories', icon: FolderTree },
+    { id: 'customer-orders', label: 'Pesanan & Resi', icon: Truck },
     { id: 'resellers', label: 'Resellers', icon: Store },
-    { id: 'inquiries', label: 'Orders / Inquiry', icon: MessageSquareText },
+    { id: 'inquiries', label: 'Inquiries', icon: MessageSquareText },
     { id: 'banners', label: 'Promo & Banner', icon: ImageIcon },
     { id: 'testimonials', label: 'Testimonials', icon: Star },
     { id: 'pages', label: 'Pages', icon: FileText },
@@ -891,6 +917,13 @@ export function AdminDashboard({ onExitToStore, onStorefrontUpdated }: AdminDash
           ) : activeTab === 'categories' ? (
             <CategoriesManager
               categories={categories}
+              authToken={authToken}
+              onRefreshAll={handleRefreshAll}
+            />
+          ) : activeTab === 'customer-orders' ? (
+            <CustomerOrdersManager
+              orders={customerOrdersList}
+              customers={customersList}
               authToken={authToken}
               onRefreshAll={handleRefreshAll}
             />

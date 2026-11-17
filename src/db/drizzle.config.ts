@@ -3,22 +3,21 @@ import * as dotenv from "dotenv";
 
 dotenv.config();
 
-const sqlHost = process.env.SQL_HOST;
-const sqlDbName = process.env.SQL_DB_NAME;
-const user = process.env.SQL_ADMIN_USER;
-const password = process.env.SQL_ADMIN_PASSWORD;
+const databaseUrl = process.env.DATABASE_URL?.trim();
 
-if (!sqlHost) {
-  throw new Error("SQL_HOST must be set in environment variables.");
-}
-if (!sqlDbName) {
-  throw new Error("SQL_DB_NAME must be set in environment variables.");
-}
-if (!user) {
-  throw new Error("SQL_ADMIN_USER must be set in environment variables.");
-}
-if (!password) {
-  throw new Error("SQL_ADMIN_PASSWORD must be set in environment variables.");
+if (!databaseUrl) {
+  if (!process.env.SQL_HOST) {
+    throw new Error("DATABASE_URL (Neon Postgres) or SQL_HOST must be set in environment variables.");
+  }
+  if (!process.env.SQL_DB_NAME) {
+    throw new Error("SQL_DB_NAME must be set in environment variables.");
+  }
+  if (!process.env.SQL_ADMIN_USER && !process.env.SQL_USER) {
+    throw new Error("SQL_ADMIN_USER must be set in environment variables.");
+  }
+  if (!process.env.SQL_ADMIN_PASSWORD && !process.env.SQL_PASSWORD) {
+    throw new Error("SQL_ADMIN_PASSWORD must be set in environment variables.");
+  }
 }
 
 export default defineConfig({
@@ -26,12 +25,16 @@ export default defineConfig({
   out: "./drizzle",
   dialect: "postgresql",
   schemaFilter: ["public"],
-  dbCredentials: {
-    host: sqlHost,
-    user: user,
-    password: password,
-    database: sqlDbName,
-    ssl: false,
-  },
+  dbCredentials: databaseUrl
+    ? {
+        url: databaseUrl,
+      }
+    : {
+        host: process.env.SQL_HOST!,
+        user: (process.env.SQL_ADMIN_USER || process.env.SQL_USER)!,
+        password: (process.env.SQL_ADMIN_PASSWORD || process.env.SQL_PASSWORD)!,
+        database: process.env.SQL_DB_NAME!,
+        ssl: process.env.SQL_SSL === "true" ? { rejectUnauthorized: false } : false,
+      },
   verbose: true,
 });

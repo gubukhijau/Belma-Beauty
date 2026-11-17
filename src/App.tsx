@@ -11,6 +11,7 @@ import { AboutPage, ContactPage } from './components/StaticPages';
 import { SafeImage } from './components/SafeImage';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 import { ResellerPortal } from './components/ResellerPortal';
+import { CustomerPortal } from './components/CustomerPortal';
 
 const DEFAULT_SETTINGS: StoreSettings = {
   id: 1,
@@ -176,6 +177,11 @@ function BelmaAppContent() {
   // Reseller Portal Route
   if (pathname.startsWith('/reseller')) {
     return <ResellerPortal onExitToStore={() => navigate('/')} />;
+  }
+
+  // Customer (Pelanggan) Portal Route
+  if (pathname.startsWith('/pelanggan')) {
+    return <CustomerPortal onExitToStore={() => navigate('/')} />;
   }
 
   // Product Detail Route (/product/:slug)

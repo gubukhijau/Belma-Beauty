@@ -36,6 +36,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+app.set('trust proxy', 1);
+
 const PORT =
   process.env.NGINX_PORT && process.env.PORT === process.env.NGINX_PORT
     ? Number(process.env.DEFAULT_APP_PORT) || 3000
@@ -304,6 +306,7 @@ app.post('/api/auth/login', async (req, res) => {
     res.cookie('belma_admin_session', token, {
       httpOnly: true,
       sameSite: 'lax',
+      secure: req.secure || process.env.VERCEL === '1',
       path: '/',
       maxAge: 1000 * 60 * 60 * 24 * 7,
     });
@@ -371,6 +374,7 @@ app.post('/api/auth/firebase', async (req, res) => {
     res.cookie('belma_admin_session', token, {
       httpOnly: true,
       sameSite: 'lax',
+      secure: req.secure || process.env.VERCEL === '1',
       path: '/',
       maxAge: 1000 * 60 * 60 * 24 * 7,
     });
@@ -448,6 +452,7 @@ app.post('/api/reseller/login', async (req, res) => {
     res.cookie('belma_reseller_session', token, {
       httpOnly: true,
       sameSite: 'lax',
+      secure: req.secure || process.env.VERCEL === '1',
       path: '/',
       maxAge: 1000 * 60 * 60 * 24 * 7,
     });
@@ -1417,4 +1422,10 @@ async function startServer() {
   });
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export { app };
+export default app;
+

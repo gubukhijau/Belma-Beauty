@@ -9,18 +9,21 @@ import {
   MessageCircle,
   Loader2,
   UserPlus,
+  Truck,
 } from 'lucide-react';
 import type {
   AdminUser,
   Banner,
   Category,
   CmsPage,
+  CustomerAccount,
+  CustomerOrder,
   Inquiry,
   ResellerAccount,
   StoreSettings,
   Testimonial,
 } from '../../types/store';
-import { formatDateShort } from '../../lib/format';
+import { formatDateShort, formatIDR } from '../../lib/format';
 import { SafeImage } from '../SafeImage';
 import { SingleImageUploader } from './ImageUploader';
 import { useToast } from '../ToastContext';
@@ -2060,4 +2063,550 @@ export function ResellersManager({
     </div>
   );
 }
+
+// ============================================================================
+// 8. CUSTOMER ORDERS & MANUAL RESI MANAGER (Orders via WhatsApp -> Manual Resi)
+// ============================================================================
+const ADMIN_COURIER_OPTIONS = [
+  { code: '', label: '-- Belum Ada Kurir --' },
+  { code: 'jne', label: 'JNE Express (jne)' },
+  { code: 'jnt', label: 'J&T Express (jnt)' },
+  { code: 'sicepat', label: 'SiCepat (sicepat)' },
+  { code: 'anteraja', label: 'AnterAja (anteraja)' },
+  { code: 'pos', label: 'POS Indonesia (pos)' },
+  { code: 'tiki', label: 'TIKI (tiki)' },
+  { code: 'wahana', label: 'Wahana (wahana)' },
+  { code: 'ninja', label: 'Ninja Xpress (ninja)' },
+  { code: 'spx', label: 'Shopee Express (spx)' },
+  { code: 'lion', label: 'Lion Parcel (lion)' },
+  { code: 'idexpress', label: 'ID Express (idexpress)' },
+];
+
+export function CustomerOrdersManager({
+  orders,
+  customers,
+  authToken,
+  onRefreshAll,
+}: SectionProps & { orders: CustomerOrder[]; customers: CustomerAccount[] }) {
+  const { showToast } = useToast();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<CustomerOrder | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<CustomerOrder | null>(null);
+
+  const [selectedCustomerId, setSelectedCustomerId] = useState('');
+  const [customerName, setCustomerName] = useState('');
+  const [customerWhatsapp, setCustomerWhatsapp] = useState('');
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [shippingAddress, setShippingAddress] = useState('');
+  const [productSummary, setProductSummary] = useState('');
+  const [totalAmount, setTotalAmount] = useState('');
+  const [orderChannel, setOrderChannel] = useState('whatsapp');
+  const [status, setStatus] = useState('diproses');
+  const [courier, setCourier] = useState('jne');
+  const [trackingNumber, setTrackingNumber] = useState('');
+  const [trackingNote, setTrackingNote] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const openCreate = () => {
+    setEditing(null);
+    setSelectedCustomerId('');
+    setCustomerName('');
+    setCustomerWhatsapp('');
+    setCustomerEmail('');
+    setShippingAddress('');
+    setProductSummary('');
+    setTotalAmount('189000');
+    setOrderChannel('whatsapp');
+    setStatus('diproses');
+    setCourier('jne');
+    setTrackingNumber('');
+    setTrackingNote('');
+    setModalOpen(true);
+  };
+
+  const openEdit = (ord: CustomerOrder) => {
+    setEditing(ord);
+    setSelectedCustomerId(ord.customerId ? String(ord.customerId) : '');
+    setCustomerName(ord.customerName);
+    setCustomerWhatsapp(ord.customerWhatsapp);
+    setCustomerEmail(ord.customerEmail || '');
+    setShippingAddress(ord.shippingAddress || '');
+    setProductSummary(ord.productSummary);
+    setTotalAmount(String(ord.totalAmount || 0));
+    setOrderChannel(ord.orderChannel || 'whatsapp');
+    setStatus(ord.status || 'diproses');
+    setCourier(ord.courier || '');
+    setTrackingNumber(ord.trackingNumber || '');
+    setTrackingNote(ord.trackingNote || '');
+    setModalOpen(true);
+  };
+
+  const handleSelectCustomer = (custIdStr: string) => {
+    setSelectedCustomerId(custIdStr);
+    const found = customers.find((c) => String(c.id) === custIdStr);
+    if (found) {
+      setCustomerName(found.name);
+      setCustomerWhatsapp(found.whatsappNumber);
+      setCustomerEmail(found.email);
+      setShippingAddress(found.address);
+    }
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const res = await fetch(
+        editing ? `/api/admin/orders/${editing.id}` : '/api/admin/orders',
+        {
+          method: editing ? 'PUT' : 'POST',
+          headers: getHeaders(authToken),
+          body: JSON.stringify({
+            customerId: selectedCustomerId ? Number(selectedCustomerId) : null,
+            customerName,
+            customerWhatsapp,
+            customerEmail,
+            shippingAddress,
+            productSummary,
+            totalAmount: Number(totalAmount) || 0,
+            orderChannel,
+            status: trackingNumber.trim() && status === 'diproses' ? 'dikirim' : status,
+            courier,
+            trackingNumber,
+            trackingNote,
+          }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal menyimpan pesanan.');
+      showToast(
+        editing
+          ? 'Pesanan & nomor resi berhasil diperbarui.'
+          : 'Pesanan WhatsApp baru berhasil dicatat.'
+      );
+      setModalOpen(false);
+      onRefreshAll();
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      const res = await fetch(`/api/admin/orders/${deleteTarget.id}`, {
+        method: 'DELETE',
+        headers: getHeaders(authToken, false),
+      });
+      if (!res.ok) throw new Error('Gagal menghapus pesanan.');
+      showToast(`Pesanan ${deleteTarget.orderNumber} dihapus.`);
+      setDeleteTarget(null);
+      onRefreshAll();
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    }
+  };
+
+  return (
+    <div className="space-y-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="font-serif text-2xl font-semibold text-[#493B34]">
+            Pesanan Pelanggan & Input Resi
+          </h2>
+          <p className="text-xs text-[#9C7965]">
+            Catat pesanan WhatsApp pelanggan dan input nomor resi secara manual agar pelanggan dapat melakukan Tracking Cekresi di Dashboard Pelanggan.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={openCreate}
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#493B34] hover:bg-[#9C7965] text-white text-xs font-medium tracking-wider uppercase transition-colors self-start sm:self-auto"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Tambah Pesanan & Resi</span>
+        </button>
+      </div>
+
+      {/* Orders Table */}
+      <div className="bg-white rounded-xl border border-[#D8C3AD]/60 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-[#E9DDD1] bg-[#F8F4EE]/70 text-[11px] uppercase tracking-wider text-[#9C7965]">
+                <th className="py-3 px-4 font-medium">No. Order</th>
+                <th className="py-3 px-4 font-medium">Pelanggan</th>
+                <th className="py-3 px-4 font-medium">Produk & Total</th>
+                <th className="py-3 px-4 font-medium">Kurir & No. Resi</th>
+                <th className="py-3 px-4 font-medium">Status</th>
+                <th className="py-3 px-4 font-medium text-right">Aksi</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#E9DDD1] text-sm">
+              {orders.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-10 text-center text-xs text-[#9C7965]">
+                    Belum ada pesanan pelanggan yang dicatat.
+                  </td>
+                </tr>
+              ) : (
+                orders.map((ord) => (
+                  <tr key={ord.id} className="hover:bg-[#F8F4EE]/50 transition-colors">
+                    <td className="py-3.5 px-4 whitespace-nowrap">
+                      <p className="font-mono text-xs font-semibold text-[#493B34]">
+                        {ord.orderNumber}
+                      </p>
+                      <p className="text-[11px] text-[#9C7965] tabular-nums">
+                        {formatDateShort(ord.createdAt)} · {ord.orderChannel}
+                      </p>
+                    </td>
+                    <td className="py-3.5 px-4 text-xs">
+                      <p className="font-medium text-[#493B34]">{ord.customerName}</p>
+                      <p className="text-[#9C7965] tabular-nums">{ord.customerWhatsapp}</p>
+                      {ord.customerEmail && (
+                        <p className="text-[11px] text-[#9C7965]">{ord.customerEmail}</p>
+                      )}
+                    </td>
+                    <td className="py-3.5 px-4 text-xs max-w-xs">
+                      <p className="text-[#493B34] line-clamp-2">{ord.productSummary}</p>
+                      <p className="font-semibold text-[#493B34] mt-0.5 tabular-nums">
+                        {formatIDR(ord.totalAmount)}
+                      </p>
+                    </td>
+                    <td className="py-3.5 px-4 text-xs whitespace-nowrap">
+                      {ord.trackingNumber ? (
+                        <div>
+                          <span className="uppercase font-medium text-[#1F7A4C] block">
+                            {ord.courier || 'JNE'}
+                          </span>
+                          <span className="font-mono font-semibold text-[#493B34]">
+                            {ord.trackingNumber}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-[#9C7965] italic">Belum ada resi</span>
+                      )}
+                    </td>
+                    <td className="py-3.5 px-4 text-xs whitespace-nowrap capitalize">
+                      <span className="font-medium text-[#493B34]">{ord.status}</span>
+                    </td>
+                    <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                      <div className="inline-flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(ord)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#D8C3AD] text-xs font-medium text-[#493B34] hover:bg-[#F8F4EE]"
+                        >
+                          <Truck className="w-3.5 h-3.5" />
+                          <span>{ord.trackingNumber ? 'Edit Resi' : 'Input Resi'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTarget(ord)}
+                          className="p-2 rounded-lg border border-[#E5A9A9] text-[#B91C1C] hover:bg-[#FFF5F5]"
+                          aria-label={`Hapus ${ord.orderNumber}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Registered Customers List */}
+      <div className="bg-white rounded-xl border border-[#D8C3AD]/60 p-6 space-y-4">
+        <div>
+          <h3 className="font-serif text-lg font-semibold text-[#493B34]">
+            Daftar Pelanggan Terdaftar ({customers.length})
+          </h3>
+          <p className="text-xs text-[#9C7965]">
+            Pelanggan yang mendaftar melalui formulir pendaftaran di halaman Pelanggan (/pelanggan).
+          </p>
+        </div>
+
+        {customers.length === 0 ? (
+          <p className="text-xs text-[#9C7965] py-4">Belum ada pelanggan terdaftar.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-[#E9DDD1] text-[11px] uppercase tracking-wider text-[#9C7965]">
+                  <th className="py-2.5 px-3 font-medium">Nama</th>
+                  <th className="py-2.5 px-3 font-medium">Email & No. WhatsApp</th>
+                  <th className="py-2.5 px-3 font-medium">Alamat</th>
+                  <th className="py-2.5 px-3 font-medium text-right">Terdaftar</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#E9DDD1]">
+                {customers.map((c) => (
+                  <tr key={c.id}>
+                    <td className="py-2.5 px-3 font-medium text-[#493B34]">{c.name}</td>
+                    <td className="py-2.5 px-3 text-[#493B34]/80">
+                      <p>{c.email}</p>
+                      <p className="text-[#9C7965] tabular-nums">{c.whatsappNumber}</p>
+                    </td>
+                    <td className="py-2.5 px-3 text-[#493B34]/75 max-w-sm">{c.address}</td>
+                    <td className="py-2.5 px-3 text-right text-[#9C7965] tabular-nums whitespace-nowrap">
+                      {formatDateShort(c.createdAt)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Add / Edit Order & Manual Resi Modal */}
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 bg-[#493B34]/50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-[#D8C3AD] w-full max-w-xl p-6 space-y-4 my-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="font-serif text-xl font-semibold text-[#493B34]">
+                {editing ? `Kelola Pesanan ${editing.orderNumber}` : 'Catat Pesanan WhatsApp & Resi'}
+              </h3>
+              <button type="button" onClick={() => setModalOpen(false)}>
+                <X className="w-5 h-5 text-[#9C7965]" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSave} className="space-y-4">
+              {!editing && customers.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-[#493B34] mb-1">
+                    Pilih dari Pelanggan Terdaftar (Opsional)
+                  </label>
+                  <select
+                    value={selectedCustomerId}
+                    onChange={(e) => handleSelectCustomer(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-lg border border-[#D8C3AD] text-sm bg-white"
+                  >
+                    <option value="">-- Isi Data Pelanggan Secara Manual --</option>
+                    {customers.map((c) => (
+                      <option key={c.id} value={String(c.id)}>
+                        {c.name} ({c.whatsappNumber} · {c.email})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-[#493B34] mb-1">
+                    Nama Pelanggan *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-lg border border-[#D8C3AD] text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-[#493B34] mb-1">
+                    No WhatsApp *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={customerWhatsapp}
+                    onChange={(e) => setCustomerWhatsapp(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-lg border border-[#D8C3AD] text-sm tabular-nums"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-[#493B34] mb-1">
+                    Email Pelanggan (Agar sinkron ke dashboard)
+                  </label>
+                  <input
+                    type="email"
+                    value={customerEmail}
+                    onChange={(e) => setCustomerEmail(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-lg border border-[#D8C3AD] text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-[#493B34] mb-1">
+                    Saluran Pembelian
+                  </label>
+                  <select
+                    value={orderChannel}
+                    onChange={(e) => setOrderChannel(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-lg border border-[#D8C3AD] text-sm bg-white"
+                  >
+                    <option value="whatsapp">WhatsApp</option>
+                    <option value="tiktok">TikTok Shop</option>
+                    <option value="shopee">Shopee</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-[#493B34] mb-1">
+                  Alamat Pengiriman
+                </label>
+                <input
+                  type="text"
+                  value={shippingAddress}
+                  onChange={(e) => setShippingAddress(e.target.value)}
+                  className="w-full px-3.5 py-2 rounded-lg border border-[#D8C3AD] text-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-medium text-[#493B34] mb-1">
+                    Produk yang Dipesan *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={productSummary}
+                    onChange={(e) => setProductSummary(e.target.value)}
+                    placeholder="1x Belma Brightening Serum, 1x Belma Sunscreen"
+                    className="w-full px-3.5 py-2 rounded-lg border border-[#D8C3AD] text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-[#493B34] mb-1">
+                    Total (Rp) *
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    required
+                    value={totalAmount}
+                    onChange={(e) => setTotalAmount(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-lg border border-[#D8C3AD] text-sm tabular-nums"
+                  />
+                </div>
+              </div>
+
+              {/* Manual Resi Input Section */}
+              <div className="rounded-xl bg-[#F8F4EE] border border-[#D8C3AD] p-4 space-y-3">
+                <p className="text-xs font-semibold text-[#493B34]">
+                  Input Manual Resi Pengiriman (Tracking Cekresi.com)
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-[#493B34] mb-1">Kurir</label>
+                    <select
+                      value={courier}
+                      onChange={(e) => setCourier(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-[#D8C3AD] text-sm bg-white"
+                    >
+                      {ADMIN_COURIER_OPTIONS.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-[#493B34] mb-1">
+                      Nomor Resi (AWB)
+                    </label>
+                    <input
+                      type="text"
+                      value={trackingNumber}
+                      onChange={(e) => setTrackingNumber(e.target.value)}
+                      placeholder="Contoh: KDRAA01056184914"
+                      className="w-full px-3 py-2 rounded-lg border border-[#D8C3AD] text-sm font-mono bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-[#493B34] mb-1">
+                      Status Pesanan
+                    </label>
+                    <select
+                      value={status}
+                      onChange={(e) => setStatus(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-[#D8C3AD] text-sm bg-white"
+                    >
+                      <option value="menunggu">Menunggu</option>
+                      <option value="diproses">Diproses</option>
+                      <option value="dikirim">Dikirim</option>
+                      <option value="selesai">Selesai</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-[#493B34] mb-1">
+                    Catatan Pengiriman
+                  </label>
+                  <input
+                    type="text"
+                    value={trackingNote}
+                    onChange={(e) => setTrackingNote(e.target.value)}
+                    placeholder="Contoh: Dikirim via JNE Regular dari Jakarta"
+                    className="w-full px-3 py-2 rounded-lg border border-[#D8C3AD] text-sm bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setModalOpen(false)}
+                  className="px-4 py-2 rounded-lg border border-[#D8C3AD] text-xs font-medium"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="px-5 py-2 rounded-lg bg-[#493B34] hover:bg-[#9C7965] text-white text-xs font-medium uppercase tracking-wider"
+                >
+                  {saving ? 'Menyimpan...' : 'Simpan Pesanan & Resi'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 bg-[#493B34]/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-[#D8C3AD] max-w-sm w-full p-6 space-y-4">
+            <h3 className="font-serif text-lg font-semibold text-[#493B34]">
+              Hapus Pesanan “{deleteTarget.orderNumber}”?
+            </h3>
+            <p className="text-xs text-[#493B34]/75">
+              Data pesanan dan resi ini akan dihapus permanen.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="px-4 py-2 rounded-lg border border-[#D8C3AD] text-xs font-medium"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                className="px-4 py-2 rounded-lg bg-[#B91C1C] text-white text-xs font-medium"
+              >
+                Hapus
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 

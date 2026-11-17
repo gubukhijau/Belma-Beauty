@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import type { NextFunction, Request, Response } from 'express';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/index.ts';
-import { adminUsers, resellers } from '../db/schema.ts';
+import { adminUsers, customers, resellers } from '../db/schema.ts';
 import { adminAuth } from './firebase-admin.ts';
 
 const SESSION_SECRET =
@@ -30,9 +30,20 @@ export interface ResellerSessionPayload {
   createdAt: string;
 }
 
+export interface CustomerSessionPayload {
+  id: number;
+  name: string;
+  address: string;
+  whatsappNumber: string;
+  email: string;
+  role: string;
+  createdAt: string;
+}
+
 export interface AuthRequest extends Request {
   adminUser?: AdminUserPayload;
   resellerUser?: ResellerSessionPayload;
+  customerUser?: CustomerSessionPayload;
 }
 
 export function hashPassword(password: string): string {
@@ -265,6 +276,100 @@ export const requireResellerAuth = async (
   } catch (error) {
     console.error('Reseller auth verification error:', error);
     return res.status(401).json({ error: 'Sesi reseller tidak valid atau kedaluwarsa.' });
+  }
+};
+
+export function normalizeWhatsapp(raw: string): string {
+  const digits = String(raw || '').replace(/[^0-9]/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('0')) return `62${digits.slice(1)}`;
+  if (digits.startsWith('8')) return `62${digits}`;
+  return digits;
+}
+
+export function createCustomerSessionToken(id: number, email: string): string {
+  const exp = Date.now() + 1000 * 60 * 60 * 24 * 14;
+  const body = Buffer.from(
+    JSON.stringify({ type: 'customer', id, email, exp })
+  ).toString('base64url');
+  const signature = crypto
+    .createHmac('sha256', SESSION_SECRET)
+    .update(body)
+    .digest('base64url');
+  return `${body}.${signature}`;
+}
+
+export async function resolveCustomerFromRequest(
+  req: Request
+): Promise<CustomerSessionPayload | null> {
+  const authHeader = req.headers.authorization;
+  const bearerToken =
+    authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+  const cookieToken = parseCookie(req.headers.cookie, 'belma_customer_session');
+  const tokenToCheck = bearerToken || cookieToken;
+  if (!tokenToCheck) return null;
+
+  try {
+    const parts = tokenToCheck.split('.');
+    if (parts.length !== 2) return null;
+    const [body, signature] = parts;
+    const expected = crypto
+      .createHmac('sha256', SESSION_SECRET)
+      .update(body)
+      .digest('base64url');
+    const sigBuf = Buffer.from(signature);
+    const expBuf = Buffer.from(expected);
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+      return null;
+    }
+    const decoded = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+    if (
+      !decoded ||
+      decoded.type !== 'customer' ||
+      typeof decoded.exp !== 'number' ||
+      decoded.exp < Date.now()
+    ) {
+      return null;
+    }
+
+    const rows = await db
+      .select()
+      .from(customers)
+      .where(eq(customers.id, Number(decoded.id)))
+      .limit(1);
+
+    if (rows.length === 0) return null;
+    const c = rows[0];
+
+    return {
+      id: c.id,
+      name: c.name,
+      address: c.address,
+      whatsappNumber: c.whatsappNumber,
+      email: c.email,
+      role: c.role || 'pelanggan',
+      createdAt: c.createdAt.toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export const requireCustomerAuth = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const customer = await resolveCustomerFromRequest(req);
+    if (!customer) {
+      return res.status(401).json({ error: 'Silakan daftar atau masuk sebagai pelanggan.' });
+    }
+    req.customerUser = customer;
+    next();
+  } catch (error) {
+    console.error('Customer auth verification error:', error);
+    return res.status(401).json({ error: 'Sesi pelanggan tidak valid atau kedaluwarsa.' });
   }
 };
 

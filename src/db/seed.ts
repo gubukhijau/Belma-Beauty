@@ -1,9 +1,11 @@
 import { count, eq } from 'drizzle-orm';
-import { db } from './index.ts';
+import { db, pool } from './index.ts';
 import {
   adminUsers,
   banners,
   categories,
+  customerOrders,
+  customers,
   inquiries,
   pages,
   productImages,
@@ -26,7 +28,209 @@ export async function ensureSeeded(): Promise<void> {
   return seedPromise;
 }
 
+async function ensureSchemaTables(): Promise<void> {
+  const check = await pool.query<{ tbl: string | null }>(
+    "SELECT to_regclass('public.store_settings') AS tbl"
+  );
+  if (check.rows[0]?.tbl) {
+    return;
+  }
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS categories (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL UNIQUE,
+      description TEXT DEFAULT '',
+      image_url TEXT DEFAULT '',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS products (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL UNIQUE,
+      sku TEXT NOT NULL UNIQUE,
+      category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+      price INTEGER NOT NULL DEFAULT 0,
+      discount_price INTEGER,
+      reseller_price INTEGER,
+      short_description TEXT NOT NULL DEFAULT '',
+      description TEXT NOT NULL DEFAULT '',
+      benefits TEXT NOT NULL DEFAULT '',
+      how_to_use TEXT NOT NULL DEFAULT '',
+      ingredients TEXT NOT NULL DEFAULT '',
+      size_variant TEXT NOT NULL DEFAULT '30 ml',
+      stock INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'active',
+      is_best_seller BOOLEAN NOT NULL DEFAULT false,
+      is_new_arrival BOOLEAN NOT NULL DEFAULT false,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      whatsapp_message TEXT DEFAULT '',
+      tiktok_url TEXT DEFAULT '',
+      shopee_url TEXT DEFAULT '',
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS reseller_price INTEGER;
+
+    CREATE TABLE IF NOT EXISTS product_images (
+      id SERIAL PRIMARY KEY,
+      product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      image_url TEXT NOT NULL,
+      alt_text TEXT DEFAULT '',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_primary BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS banners (
+      id SERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      subtitle TEXT DEFAULT '',
+      badge_text TEXT DEFAULT '',
+      cta_text TEXT DEFAULT 'SHOP NOW',
+      cta_link TEXT DEFAULT '#catalog',
+      image_url TEXT DEFAULT '',
+      placement TEXT NOT NULL DEFAULT 'hero',
+      countdown_end_at TIMESTAMP,
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS testimonials (
+      id SERIAL PRIMARY KEY,
+      customer_name TEXT NOT NULL,
+      customer_role TEXT DEFAULT 'Verified Customer',
+      avatar_url TEXT DEFAULT '',
+      rating INTEGER NOT NULL DEFAULT 5,
+      review TEXT NOT NULL,
+      product_name TEXT DEFAULT '',
+      is_published BOOLEAN NOT NULL DEFAULT true,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS store_settings (
+      id SERIAL PRIMARY KEY,
+      store_name TEXT NOT NULL DEFAULT 'BELMA BEAUTY',
+      tagline TEXT NOT NULL DEFAULT 'Reveal Your Natural Beauty',
+      logo_url TEXT DEFAULT '',
+      favicon_url TEXT DEFAULT '',
+      whatsapp_number TEXT NOT NULL DEFAULT '6281234567890',
+      whatsapp_default_message TEXT NOT NULL DEFAULT 'Halo Belma Beauty, saya ingin membeli [NAMA PRODUK] dengan harga [HARGA]. Apakah produk masih tersedia?',
+      instagram_url TEXT DEFAULT 'https://instagram.com/belmabeauty.official',
+      tiktok_url TEXT DEFAULT 'https://www.tiktok.com/@belmabeauty.official',
+      shopee_store_url TEXT DEFAULT 'https://shopee.co.id/belmabeauty.official',
+      email TEXT DEFAULT 'concierge@belmabeauty.com',
+      store_address TEXT DEFAULT 'Jl. Senopati No. 88, Kebayoran Baru, Jakarta Selatan 12190',
+      seo_title TEXT DEFAULT 'BELMA BEAUTY — Luxury Botanical Skincare & Beauty Essentials',
+      seo_description TEXT DEFAULT 'Reveal your natural beauty with Belma Beauty. Discover clinical-grade botanical skincare, serums, moisturizers, and daily beauty essentials.',
+      hero_banner_url TEXT DEFAULT '',
+      reseller_default_discount_pct INTEGER NOT NULL DEFAULT 0,
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    ALTER TABLE store_settings ADD COLUMN IF NOT EXISTS reseller_default_discount_pct INTEGER NOT NULL DEFAULT 0;
+
+    CREATE TABLE IF NOT EXISTS admin_users (
+      id SERIAL PRIMARY KEY,
+      uid TEXT UNIQUE,
+      email TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL DEFAULT 'Belma Administrator',
+      password_hash TEXT,
+      role TEXT NOT NULL DEFAULT 'administrator',
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      last_login_at TIMESTAMP,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS pages (
+      id SERIAL PRIMARY KEY,
+      slug TEXT NOT NULL UNIQUE,
+      title TEXT NOT NULL,
+      subtitle TEXT DEFAULT '',
+      content TEXT NOT NULL DEFAULT '',
+      image_url TEXT DEFAULT '',
+      is_published BOOLEAN NOT NULL DEFAULT true,
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS inquiries (
+      id SERIAL PRIMARY KEY,
+      customer_name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT DEFAULT '',
+      subject TEXT NOT NULL DEFAULT 'Product Consultation',
+      message TEXT NOT NULL,
+      product_name TEXT DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'new',
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS media_assets (
+      id SERIAL PRIMARY KEY,
+      filename TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL DEFAULT 0,
+      base64_data TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS resellers (
+      id SERIAL PRIMARY KEY,
+      email TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      phone TEXT DEFAULT '',
+      city TEXT DEFAULT '',
+      tier_code TEXT NOT NULL DEFAULT 'RESELLER',
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'reseller',
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      notes TEXT DEFAULT '',
+      last_login_at TIMESTAMP,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS customers (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      address TEXT NOT NULL,
+      whatsapp_number TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE,
+      role TEXT NOT NULL DEFAULT 'pelanggan',
+      last_login_at TIMESTAMP,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS customer_orders (
+      id SERIAL PRIMARY KEY,
+      order_number TEXT NOT NULL UNIQUE,
+      customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+      customer_name TEXT NOT NULL,
+      customer_whatsapp TEXT NOT NULL,
+      customer_email TEXT DEFAULT '',
+      shipping_address TEXT NOT NULL DEFAULT '',
+      product_summary TEXT NOT NULL,
+      total_amount INTEGER NOT NULL DEFAULT 0,
+      order_channel TEXT NOT NULL DEFAULT 'whatsapp',
+      status TEXT NOT NULL DEFAULT 'diproses',
+      courier TEXT DEFAULT '',
+      tracking_number TEXT DEFAULT '',
+      tracking_note TEXT DEFAULT '',
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+}
+
 async function runSeed() {
+  await ensureSchemaTables();
+
   // 1. Seed Store Settings
   const [{ value: settingsCount }] = await db.select({ value: count() }).from(storeSettings);
   if (settingsCount === 0) {
@@ -504,5 +708,58 @@ async function runSeed() {
         .set({ resellerPrice: rPrice })
         .where(eq(products.id, existing[0].id));
     }
+  }
+
+  // 11. Seed Sample Customer & WhatsApp Orders for Pelanggan Dashboard
+  const [{ value: custCount }] = await db.select({ value: count() }).from(customers);
+  let seededCustomerId: number | null = null;
+  if (custCount === 0) {
+    const [insertedCust] = await db
+      .insert(customers)
+      .values({
+        name: 'Rania Putri',
+        address: 'Jl. Kemang Raya No. 45, Mampang Prapatan, Jakarta Selatan 12730',
+        whatsappNumber: '081288990011',
+        email: 'pelanggan@belmabeauty.com',
+        role: 'pelanggan',
+      })
+      .returning();
+    seededCustomerId = insertedCust?.id ?? null;
+  }
+
+  const [{ value: orderCount }] = await db.select({ value: count() }).from(customerOrders);
+  if (orderCount === 0) {
+    await db.insert(customerOrders).values([
+      {
+        orderNumber: 'BLM-WA-20261101',
+        customerId: seededCustomerId,
+        customerName: 'Rania Putri',
+        customerWhatsapp: '081288990011',
+        customerEmail: 'pelanggan@belmabeauty.com',
+        shippingAddress: 'Jl. Kemang Raya No. 45, Mampang Prapatan, Jakarta Selatan 12730',
+        productSummary: '1x Belma Brightening Serum, 1x Belma Sunscreen',
+        totalAmount: 338000,
+        orderChannel: 'whatsapp',
+        status: 'dikirim',
+        courier: 'jne',
+        trackingNumber: 'KDRAA01056184914',
+        trackingNote: 'Resi JNE Regular telah diinput oleh Admin Belma Beauty.',
+      },
+      {
+        orderNumber: 'BLM-WA-20261102',
+        customerId: seededCustomerId,
+        customerName: 'Rania Putri',
+        customerWhatsapp: '081288990011',
+        customerEmail: 'pelanggan@belmabeauty.com',
+        shippingAddress: 'Jl. Kemang Raya No. 45, Mampang Prapatan, Jakarta Selatan 12730',
+        productSummary: '1x Belma Moisturizing Cream',
+        totalAmount: 265000,
+        orderChannel: 'whatsapp',
+        status: 'diproses',
+        courier: '',
+        trackingNumber: '',
+        trackingNote: 'Pesanan via WhatsApp sedang dikemas oleh tim gudang.',
+      },
+    ]);
   }
 }

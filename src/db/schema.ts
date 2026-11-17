@@ -179,6 +179,38 @@ export const resellers = pgTable('resellers', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+// 12. Customer Accounts (Role Pelanggan — simple registration: Nama, Alamat, No WhatsApp, Email)
+export const customers = pgTable('customers', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  address: text('address').notNull(),
+  whatsappNumber: text('whatsapp_number').notNull(),
+  email: text('email').notNull().unique(),
+  role: text('role').notNull().default('pelanggan'),
+  lastLoginAt: timestamp('last_login_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// 13. Customer Orders & Manual Tracking Resi (Orders via WhatsApp, resi input manually in Admin)
+export const customerOrders = pgTable('customer_orders', {
+  id: serial('id').primaryKey(),
+  orderNumber: text('order_number').notNull().unique(),
+  customerId: integer('customer_id').references(() => customers.id, { onDelete: 'set null' }),
+  customerName: text('customer_name').notNull(),
+  customerWhatsapp: text('customer_whatsapp').notNull(),
+  customerEmail: text('customer_email').default(''),
+  shippingAddress: text('shipping_address').notNull().default(''),
+  productSummary: text('product_summary').notNull(),
+  totalAmount: integer('total_amount').notNull().default(0),
+  orderChannel: text('order_channel').notNull().default('whatsapp'), // 'whatsapp' | 'tiktok' | 'shopee'
+  status: text('status').notNull().default('diproses'), // 'menunggu' | 'diproses' | 'dikirim' | 'selesai'
+  courier: text('courier').default(''), // 'jne' | 'jnt' | 'sicepat' | 'anteraja' | 'pos' | 'tiki' | 'wahana' | 'ninja' | 'spx'
+  trackingNumber: text('tracking_number').default(''),
+  trackingNote: text('tracking_note').default(''),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 // Relations
 export const categoriesRelations = relations(categories, ({ many }) => ({
   products: many(products),
