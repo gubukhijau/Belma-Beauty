@@ -1,0 +1,6 @@
+{
+  "name": "BELMA BEAUTY",
+  "description": "Luxury Botanical Skincare Webstore & Admin CMS for Belma Beauty",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
